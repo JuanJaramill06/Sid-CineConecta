@@ -86,7 +86,7 @@ Una película lleva `movie: { durationSeconds, directors, cast: [{ actor, charac
 |---|---|
 | Un documento **por sesión**, nunca se sobrescribe | RF55: volver a ver un contenido crea otra sesión y la anterior se conserva |
 | Colección aparte (no embebida en el contenido ni en el perfil) | Crece sin límite (ver §5). Las dos consultas principales cruzan perfiles o contenidos |
-| `state` + `playingSince` | El servidor calcula el tiempo visto con `$$NOW - playingSince`, sin confiar en el cliente. Un salto (RF47) mueve `lastPositionSeconds` pero no suma tiempo (RF53) |
+| `state` + `playingSince` | El servidor calcula el tiempo visto con `$$NOW - playingSince`, sin confiar en el cliente, con tope en lo que falta del contenido (`durationSeconds - lastPositionSeconds`): una sesión olvidada en `PLAYING` no infla el informe. Un salto (RF47) mueve `lastPositionSeconds` pero no suma tiempo (RF53) |
 | `planId` y `subscriptionId` copiados al iniciar | RF68: el informe de consumo agrupa por el plan **con el que se vio**, aunque la cuenta cambie de plan después (cuenta 6 del seed) |
 | `contentType` copiado | El informe agrupa por tipo sin hacer `$lookup` a `Content`, y así puede quedar *covered* (ver `indices-y-optimizacion.md`) |
 

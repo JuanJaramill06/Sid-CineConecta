@@ -77,7 +77,10 @@ show('Quitar de Mi lista', db.MyList.deleteOne({ profileId: 2, contentId: 'SER-0
 //    cliente). Cada transición es un update CONDICIONAL al estado: si llegan dos
 //    "pausar" a la vez, solo uno encuentra state:'PLAYING' y el tiempo no se suma dos veces.
 // -----------------------------------------------------------------------------
-const elapsed = { $dateDiff: { startDate: '$playingSince', endDate: '$$NOW', unit: 'second' } };
+// Tope: lo que falta del contenido. Una pestaña olvidada en PLAYING no suma horas al informe.
+const elapsed = { $max: [0, { $min: [
+  { $dateDiff: { startDate: '$playingSince', endDate: '$$NOW', unit: 'second' } },
+  { $subtract: ['$durationSeconds', '$lastPositionSeconds'] }] }] };
 const progress = (pos) => ({ $gte: [pos, { $multiply: [0.9, '$durationSeconds'] }] }); // regla del 90 %
 
 // Iniciar (la app ya verificó en Oracle: perfil activo, suscripción vigente -> subscriptionId/planId)
