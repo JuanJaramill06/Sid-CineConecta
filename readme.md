@@ -55,6 +55,38 @@ cineconecta/
 - Access to an Oracle Database (course instance, SID `ESTUD`, or a local installation) and a user with permissions to create tables, indexes and views
 - MongoDB (local or MongoDB Atlas)
 
+## Credentials
+
+The backend and the MongoDB scripts read their connections from four environment variables. Define them once as **user** variables in PowerShell so they persist after closing the terminal (then open a new terminal):
+
+```powershell
+[Environment]::SetEnvironmentVariable('ORACLE_URL', 'jdbc:oracle:thin:@HOST:1521:ESTUD', 'User')
+[Environment]::SetEnvironmentVariable('ORACLE_USER', 'your_user', 'User')
+[Environment]::SetEnvironmentVariable('ORACLE_PASSWORD', 'your_password', 'User')
+[Environment]::SetEnvironmentVariable('MONGO_URI', 'mongodb+srv://user:password@cluster.mongodb.net/', 'User')
+```
+
+Never commit real values. Spring Boot 4 reads MongoDB from `spring.mongodb.uri` / `spring.mongodb.database`; the old `spring.data.mongodb.*` names are ignored and the app would silently connect to `localhost:27017`.
+
+### Least privilege
+
+- **MongoDB Atlas:** the application user has only the `readWrite` role on the `cineconecta` database (no `atlasAdmin`, no access to other databases).
+- **Oracle:** ideally the schema owner (creates tables, the view and the procedure) and the application user are different. The application user only needs:
+
+```sql
+-- Run as the schema owner (OWNER), replace APP_USER with the application user
+GRANT CREATE SESSION TO APP_USER;  -- usually granted by the DBA
+GRANT SELECT, INSERT, UPDATE ON OWNER.accounts      TO APP_USER;
+GRANT SELECT, INSERT, UPDATE ON OWNER.profiles      TO APP_USER;
+GRANT SELECT                 ON OWNER.plans         TO APP_USER;
+GRANT SELECT, INSERT         ON OWNER.subscriptions TO APP_USER;
+GRANT SELECT, INSERT         ON OWNER.payments      TO APP_USER;
+GRANT SELECT                 ON OWNER.v_active_subscriptions TO APP_USER;
+GRANT EXECUTE                ON OWNER.sp_contract_subscription TO APP_USER;
+```
+
+No `DELETE` and no DDL: profiles are deactivated, never deleted, and subscriptions/payments are append-only. On the course instance (`ESTUD`) each student has a single assigned user and cannot create users, so the application connects with that user; these grants document the intended least-privilege setup.
+
 ## Running the project
 
 ### 1. Oracle database
@@ -69,17 +101,7 @@ cineconecta/
 
 ### 3. Backend
 
-1. Configure the connections in `backend/src/main/resources/application.properties`:
-
-```properties
-# Oracle
-spring.datasource.url=jdbc:oracle:thin:@HOST:1521:ESTUD
-spring.datasource.username=YOUR_USER
-spring.datasource.password=YOUR_PASSWORD
-
-# MongoDB
-spring.data.mongodb.uri=mongodb://localhost:27017/cineconecta
-```
+1. Configure the connections through **user environment variables** (see [Credentials](#credentials)). `application.properties` only references them; it never contains real values.
 
 2. Start the API:
 
