@@ -1,5 +1,8 @@
 package com.cineconecta.backend.repository.mongo;
 
-public interface ContentRepository {
-    // TODO: extend MongoRepository<Content, String> once the document is mapped
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+import com.cineconecta.backend.model.document.Content;
+
+public interface ContentRepository extends MongoRepository<Content, String> {
 }
