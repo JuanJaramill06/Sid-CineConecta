@@ -1,3 +1,6 @@
 package com.cineconecta.backend.dto.auth;
 
-public record TokenResponse(String token) {}
+import java.time.Instant;
+
+/** Returned by both logins. role is CLIENT or ADMIN; send the token as "Authorization: Bearer ...". */
+public record TokenResponse(String token, Instant expiresAt, String role, String fullName) {}
