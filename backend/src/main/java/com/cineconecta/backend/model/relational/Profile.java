@@ -41,6 +41,13 @@ public class Profile {
 
     protected Profile() { }
 
+    public Profile(Account account, String name, Integer maxAgeRating) {
+        this.account = account;
+        this.name = name;
+        this.maxAgeRating = maxAgeRating;
+        this.active = true;
+    }
+
     public Integer getProfileId() { return profileId; }
     public Account getAccount() { return account; }
     public void setAccount(Account account) { this.account = account; }

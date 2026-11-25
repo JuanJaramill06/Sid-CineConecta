@@ -44,6 +44,7 @@ cineconecta/
 │   ├── oracle/     # Creation scripts and synthetic data load (DDL and data)
 │   └── mongodb/    # Validations, indexes and data load
 ├── docs/           # Document model, object catalog and evidence
+├── scripts/        # Demo scripts against the running API
 └── README.md
 ```
 
@@ -174,7 +175,25 @@ Every error answers `{ code, message, timestamp, details? }`:
 | 404 | Not found, including procedure errors `-20003` / `-20004` |
 | 409 | Duplicate email, profile name or My list item; overlapping subscription (`-20001`) |
 | 422 | Business rule, e.g. inactive profile or too many active profiles for the plan (`-20002`) |
+| 402 | Simulated payment rejected: nothing was stored |
 | 503 | Oracle or MongoDB not available: the operation is rejected, never allowed by default (RNF12) |
+
+#### Accounts, profiles and subscriptions (Oracle)
+
+All of them take the account from the token; none accepts an `accountId` from the client.
+
+| Method and route | What it does |
+|---|---|
+| `GET /api/plans` | Plans, cheapest first. Public |
+| `GET /api/subscriptions` | History, newest first, with `active` (RF4, RF17) |
+| `GET /api/subscriptions/current` | Current subscription, or 404 if there is none |
+| `POST /api/subscriptions` `{planId, approvePayment}` | Contract. `approvePayment: false` simulates a rejected payment (402, nothing stored). Otherwise `sp_contract_subscription` inserts subscription + payment in one transaction. 409 if a period overlaps (`-20001`), 422 if there are more active profiles than the plan allows (`-20002`) |
+| `GET /api/payments` | Payment history (RF5) |
+| `GET /api/profiles` | Every profile of the account, with `active` |
+| `GET /api/profiles/current` | The profile in `X-Profile-Id`, only if it is active and belongs to the account (RF12) |
+| `POST /api/profiles` `{name, maxAgeRating}` | Needs a current subscription and a free slot in its plan (422); name unique ignoring case (409). Locks the account row first, so concurrent requests cannot exceed the plan (RF9, RF10) |
+| `PUT /api/profiles/{id}` | Rename or change `maxAgeRating` |
+| `POST /api/profiles/{id}/deactivate` / `activate` | `isActive = 'N'` / `'Y'`; never deleted (RF11). Activating follows the same rules as creating |
 
 ### 4. Frontend
 
@@ -205,8 +224,30 @@ Database-level evidence:
 - **Transaction failure (RF19):** `05_verification.sql` calls the procedure with a duplicate payment reference. The payment insert fails and the subscription is rolled back too.
 - **Concurrency (RNF10):** `05b_concurrency_demo.sql` runs two sessions:
   - Two simultaneous subscriptions for the same account: the second one waits on the `FOR UPDATE` lock, then gets `-20001`.
-  - Two simultaneous profile creations: without the account lock both succeed and break RF10; with it, the second one is rejected. The profile service must take the same lock.
+  - Two simultaneous profile creations: without the account lock both succeed and break RF10; with it, the second one is rejected. `ProfileServiceImpl` takes the same lock.
 - **MongoDB:** conditional updates on the session state stop a duplicated "pause" from adding time twice (`06_operations.js`).
+
+Application-level evidence (through the API, for the sustentación): `scripts/demo-concurrencia-http.ps1` creates a new account each run, so account 4 stays clean, and checks:
+
+1. a rejected payment answers 402 and stores nothing;
+2. two simultaneous contracts for the same account: one 201, the other 409;
+3. two simultaneous profile creations with one free slot: one 201, the other 422.
+
+With the backend running:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo-concurrencia-http.ps1
+```
+
+To also show a failure between the inserts and the commit (RF19, RNF11), start the backend with the demo switch on and add `-IncludeFailure`. The request fails with 500 `SIMULATED_FAILURE` after both inserts, and the account ends with 0 subscriptions and 0 payments:
+
+```powershell
+$env:DEMO_SIMULATE_FAILURES = 'true'; cd backend; .\mvnw.cmd spring-boot:run
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo-concurrencia-http.ps1 -IncludeFailure
+```
 
 ## Additional documentation
 

@@ -25,4 +25,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Inte
          + "where s.account.accountId = :accountId "
          + "and s.startsAt <= local datetime and s.endsAt > local datetime")
     Optional<Subscription> findActive(@Param("accountId") Integer accountId);
+
+    @Query("select s from Subscription s join fetch s.plan where s.subscriptionId = :subscriptionId")
+    Optional<Subscription> findWithPlan(@Param("subscriptionId") Integer subscriptionId);
 }
