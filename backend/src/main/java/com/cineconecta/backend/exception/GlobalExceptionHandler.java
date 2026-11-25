@@ -76,6 +76,18 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage());
     }
 
+    @ExceptionHandler(PaymentRejectedException.class)
+    public ResponseEntity<ErrorResponse> paymentRejected(PaymentRejectedException ex) {
+        return build(HttpStatus.PAYMENT_REQUIRED, "PAYMENT_REJECTED", ex.getMessage());
+    }
+
+    // Demo of a failure between the inserts and the commit (RF19): everything was rolled back.
+    @ExceptionHandler(SimulatedFailureException.class)
+    public ResponseEntity<ErrorResponse> simulatedFailure(SimulatedFailureException ex) {
+        log.warn("Simulated failure: {}", ex.getMessage());
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "SIMULATED_FAILURE", ex.getMessage());
+    }
+
     @ExceptionHandler(ServiceUnavailableException.class)
     public ResponseEntity<ErrorResponse> unavailable(ServiceUnavailableException ex) {
         return build(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", ex.getMessage());
