@@ -7,7 +7,7 @@
 // Reejecutable: borra solo lo suyo (los 20 contenidos del seed por id exacto, MyList y
 // sesiones de los perfiles 1-23, los 2 admins) y vuelve a insertar.
 //
-// Fechas relativas a HOY, igual que cineconecta_oracle.sql: cargar Oracle y Mongo el
+// Fechas relativas a HOY, igual que 01_cineconecta_oracle.sql: cargar Oracle y Mongo el
 // MISMO día para que cada sesión caiga dentro del período de su subscriptionId.
 //
 // Ids de Oracle usados (deben existir: RNF6): perfiles 1-23, suscripciones 1-11, planes 1-4.

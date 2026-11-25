@@ -1,7 +1,7 @@
 # Catálogo de objetos
 
 Este catálogo se arma a partir de los scripts de creación:
-- Oracle: [`backend/src/main/resources/cineconecta_oracle.sql`](../backend/src/main/resources/cineconecta_oracle.sql)
+- Oracle: [`database/oracle/01_cineconecta_oracle.sql`](../database/oracle/01_cineconecta_oracle.sql)
 - MongoDB: [`database/mongodb/01_collections.js`](../database/mongodb/01_collections.js) y [`02_indexes.js`](../database/mongodb/02_indexes.js)
 
 La evidencia desde el diccionario de datos se genera con:

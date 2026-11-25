@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- CINECONECTA - CARGA DE VOLUMEN (Oracle) para las mediciones de índices
 --
--- Ejecutar con "Run Script" (F5) en SQL Developer DESPUÉS de cineconecta_oracle.sql.
+-- Ejecutar con "Run Script" (F5) en SQL Developer DESPUÉS de 01_cineconecta_oracle.sql.
 -- Reejecutable: borra SOLO su rango exacto y vuelve a insertar. Las cuentas que
 -- cree la app o la demo después de la carga (ids >= 11001) nunca se tocan.
 --

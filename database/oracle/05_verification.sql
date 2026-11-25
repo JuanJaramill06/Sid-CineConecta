@@ -2,7 +2,7 @@
 -- CINECONECTA - VERIFICACIÓN RELACIONAL (Oracle)
 --
 -- Ejecutar con "Run Script" (F5) en SQL Developer sobre el seed de
--- cineconecta_oracle.sql recién cargado (las cuentas 3, 7 y 9 deben seguir
+-- 01_cineconecta_oracle.sql recién cargado (las cuentas 3, 7 y 9 deben seguir
 -- vencidas). Funciona igual con o sin la carga de volumen.
 --
 -- Cada caso intenta UNA operación inválida y comprueba que Oracle la rechace con
@@ -67,7 +67,7 @@ BEGIN
     -- Precondición: el seed funcional está cargado
     SELECT COUNT(*) INTO v_count FROM accounts WHERE accountId BETWEEN 1 AND 10;
     IF v_count <> 10 THEN
-        RAISE_APPLICATION_ERROR(-20900, 'Cargue primero el seed de cineconecta_oracle.sql');
+        RAISE_APPLICATION_ERROR(-20900, 'Cargue primero el seed de 01_cineconecta_oracle.sql');
     END IF;
 
     -- ==========================================================================

@@ -287,7 +287,7 @@ SHOW ERRORS
 
 -- ==============================================================================
 -- DATOS SINTÉTICOS FUNCIONALES (casos para verificar las reglas)
--- Ejecutar después de 01_schema.sql y 02_procedures.sql.
+-- Van en este mismo archivo, después del esquema y del procedimiento.
 --
 -- Todas las fechas son relativas a hoy (CURRENT_DATE), así que las suscripciones
 -- "vigentes" y "vencidas" siguen siéndolo sin importar cuándo se cargue.
