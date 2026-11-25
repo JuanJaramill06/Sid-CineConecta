@@ -221,7 +221,7 @@ Las colecciones crecen así:
 
 ## 10. Casos de prueba sembrados
 
-**Oracle** (`cineconecta_oracle.sql`) y **Mongo** (`03_seed.js`) se cargan con los mismos ids. Las pruebas de rechazo están en `05_verification.sql` y `07_validation_tests.js`, y la concurrencia en `05b_concurrency_demo.sql`.
+**Oracle** (`01_cineconecta_oracle.sql`) y **Mongo** (`03_seed.js`) se cargan con los mismos ids. Las pruebas de rechazo están en `05_verification.sql` y `07_validation_tests.js`, y la concurrencia en `05b_concurrency_demo.sql`.
 
 | Regla | Dato que la demuestra | Dónde se ve |
 |---|---|---|
@@ -254,9 +254,9 @@ Las colecciones crecen así:
 
 Ver la sección *MongoDB* del [README](../readme.md). Resumen:
 
-1. Oracle: `cineconecta_oracle.sql`.
+1. Oracle: `01_cineconecta_oracle.sql`.
 2. Mongo, en este orden: `01_collections.js`, `02_indexes.js`, `03_seed.js` y `07_validation_tests.js`.
 3. Volumen, el mismo día en los dos motores: `04_volume_load.sql` y `04_volume.js`.
 4. Evidencias: `05_verification.sql`, `05b_concurrency_demo.sql`, los experimentos de índices `05_index_experiment.js` y `06_index_experiment.sql`, y los catálogos `07_object_catalog.sql` y `08_catalog.js`.
 
-> **Pendiente del equipo:** el diagrama `docs/MongoDb Diagram/cineconecta.mml` todavía muestra los ids de contenido como `ObjectId`. Ahora son strings legibles (`MOV-00001`, y `SER-00001-S01E01` en los episodios).
+**Diagrama:** [`cineconecta.mml`](MongoDb%20Diagram/cineconecta.mml) (imagen: [`cineconecta.png`](MongoDb%20Diagram/cineconecta.png)). Coincide campo por campo con los validadores de `01_collections.js`: ids de contenido como strings legibles (`MOV-00001`, `SER-00001-S01E01`), la colección `counters` y el estado de la reproducción en `Watch_sessions` (`state`, `playingSince`, `durationSeconds`).

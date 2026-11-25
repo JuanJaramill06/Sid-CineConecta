@@ -66,6 +66,13 @@ The backend and the MongoDB scripts read their connections from four environment
 [Environment]::SetEnvironmentVariable('MONGO_URI', 'mongodb+srv://user:password@cluster.mongodb.net/', 'User')
 ```
 
+Optionally, a fifth variable signs the login tokens. Without it the backend generates a random key at startup, so every restart logs everyone out (fine while developing). Generate one per machine and never share or commit it:
+
+```powershell
+$key = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+[Environment]::SetEnvironmentVariable('JWT_SECRET', $key, 'User')
+```
+
 Never commit real values. Spring Boot 4 reads MongoDB from `spring.mongodb.uri` / `spring.mongodb.database`; the old `spring.data.mongodb.*` names are ignored and the app would silently connect to `localhost:27017`.
 
 ### Least privilege
@@ -97,7 +104,7 @@ Connect with your assigned user in SQL Developer and run each script with **Run 
 
 | Order | Script | What it does |
 |---|---|---|
-| 1 | `backend/src/main/resources/cineconecta_oracle.sql` | Schema, view, `sp_contract_subscription` and functional seed (accounts 1–10) |
+| 1 | `database/oracle/01_cineconecta_oracle.sql` | Schema, view, `sp_contract_subscription` and functional seed (accounts 1–10) |
 | 2 | `database/oracle/04_volume_load.sql` | Volume: 10,000 accounts, 25,000 profiles, 120,000 subscriptions and payments. Re-runnable |
 | 3 | `database/oracle/05_verification.sql` | Invalid cases, procedure errors, mid-transaction failure, history. Prints PASS/FAIL and ends with `ROLLBACK` |
 | 4 | `database/oracle/05b_concurrency_demo.sql` | Two-session demo, run step by step (second worksheet with Ctrl+Shift+N, autocommit off) |
@@ -137,12 +144,37 @@ Documentation: [document model](docs/modelo-documental.md), [indexes and optimiz
 
 2. Start the API:
 
-```bash
-cd backend
-mvn spring-boot:run
+```powershell
+cd backend; .\mvnw.cmd spring-boot:run
 ```
 
-The API runs at `http://localhost:8080`.
+The API runs at `http://localhost:8080` and Swagger UI at `http://localhost:8080/swagger-ui.html`.
+
+#### Authentication
+
+| Who | Login | Token works on |
+|---|---|---|
+| Customer (Oracle `ACCOUNTS`) | `POST /api/auth/register`, `POST /api/auth/login` | `/api/**` except `/api/admin/**` |
+| Administrator (MongoDB `Admin_user`) | `POST /api/admin/auth/login` | `/api/admin/**` only |
+
+- Send the token as `Authorization: Bearer <token>`. `GET /api/auth/me` and `GET /api/admin/auth/me` show who it belongs to. Public routes: register, both logins and `GET /api/plans`.
+- A customer token on an admin route, or the other way round, gets **403**: the server checks the role on every request (RNF3).
+- Routes that act on a profile take it from the `X-Profile-Id` header. In a controller, declare `@CurrentProfile Profile profile`: it arrives already checked against the account in the token and active (RNF2, RF12). Never read a `profileId` from the body or the URL.
+- Test logins: customers `juan.perez@example.com` (accounts 1–10, not account 4) and admins `admin@cineconecta.com`. Passwords are in the handoff notes and the seed comments.
+
+#### Errors
+
+Every error answers `{ code, message, timestamp, details? }`:
+
+| Status | When |
+|---|---|
+| 400 | Invalid body or parameters (`details` lists each field), missing `X-Profile-Id` |
+| 401 | No token, invalid or expired token, wrong email or password |
+| 403 | Wrong role, or a profile of another account |
+| 404 | Not found, including procedure errors `-20003` / `-20004` |
+| 409 | Duplicate email, profile name or My list item; overlapping subscription (`-20001`) |
+| 422 | Business rule, e.g. inactive profile or too many active profiles for the plan (`-20002`) |
+| 503 | Oracle or MongoDB not available: the operation is rejected, never allowed by default (RNF12) |
 
 ### 4. Frontend
 
@@ -158,12 +190,11 @@ The application runs at `http://localhost:5173`.
 
 ## Tests
 
-```bash
-cd backend
-mvn test
+```powershell
+cd backend; .\mvnw.cmd test
 ```
 
-Without environment variables the context test is skipped, so `mvn test` passes offline. With `MONGO_URI` defined, `MongoMappingIT` checks the real Atlas connection (at least 20 contents) and a save/read round trip against the validators:
+Without environment variables the context test is skipped, so `mvn test` passes offline. The JWT, security, error-mapping and profile-check tests need no database. With `MONGO_URI` defined, `MongoMappingIT` checks the real Atlas connection (at least 20 contents) and a save/read round trip against the validators:
 
 ```powershell
 cd backend; .\mvnw.cmd test -Dtest=MongoMappingIT

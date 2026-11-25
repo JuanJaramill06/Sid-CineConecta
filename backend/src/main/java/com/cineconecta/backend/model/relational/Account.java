@@ -29,6 +29,12 @@ public class Account {
 
     protected Account() { }
 
+    public Account(String fullName, String email, String passwordHash) {
+        this.fullName = fullName;
+        this.email = email;
+        this.passwordHash = passwordHash;
+    }
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = LocalDateTime.now();

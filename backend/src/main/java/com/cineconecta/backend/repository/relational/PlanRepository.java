@@ -1,5 +1,12 @@
 package com.cineconecta.backend.repository.relational;
 
-public interface PlanRepository {
-    // TODO: extend JpaRepository<Plan, Integer> once the entity is mapped
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.cineconecta.backend.model.relational.Plan;
+
+public interface PlanRepository extends JpaRepository<Plan, Integer> {
+
+    List<Plan> findAllByOrderByPriceAsc();
 }
