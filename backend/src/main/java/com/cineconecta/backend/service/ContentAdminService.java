@@ -1,10 +1,11 @@
 package com.cineconecta.backend.service;
 
-import java.util.List;
-
 import com.cineconecta.backend.dto.catalog.ContentDetailResponse;
 import com.cineconecta.backend.dto.catalog.ContentRequest;
 import com.cineconecta.backend.dto.catalog.ContentSummaryResponse;
+import com.cineconecta.backend.dto.common.PageResponse;
+import com.cineconecta.backend.model.enums.ContentStatus;
+import com.cineconecta.backend.model.enums.ContentType;
 
 /** Register, update, publish and withdraw content. */
 public interface ContentAdminService {
@@ -26,8 +27,11 @@ public interface ContentAdminService {
     /** Any status, for the admin — unlike CatalogService.detail(), which only shows PUBLISHED. */
     ContentDetailResponse get(String contentId);
 
-    /** Every content, any status, for the admin's own listing. */
-    List<ContentSummaryResponse> list();
+    /**
+     * The admin's own listing: any status, optionally filtered by status and/or type, one page
+     * at a time ordered by id (size capped at 100). Only the summary fields are read.
+     */
+    PageResponse<ContentSummaryResponse> list(ContentStatus status, ContentType type, int page, int size);
 
     /** Makes the content visible to clients (RF24). */
     ContentDetailResponse publish(String contentId);

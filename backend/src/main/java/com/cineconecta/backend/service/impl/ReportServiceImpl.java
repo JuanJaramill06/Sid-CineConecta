@@ -54,6 +54,10 @@ public class ReportServiceImpl implements ReportService {
         List<AggregationOperation> stages = List.of(
                 raw(new Document("$match", new Document("startedAt",
                         new Document("$gte", fromDate).append("$lt", toDateExclusive)))),
+                // Only the fields of ix_sessions_report and no _id: the query stays "covered"
+                // (PROJECTION_COVERED, 0 documents read), the plan measured in 05_index_experiment.js.
+                raw(new Document("$project", new Document("_id", 0).append("planId", 1)
+                        .append("contentType", 1).append("profileId", 1).append("watchedSeconds", 1))),
                 raw(new Document("$group", new Document("_id",
                         new Document("planId", "$planId").append("contentType", "$contentType"))
                         .append("watchedSeconds", new Document("$sum", "$watchedSeconds"))
@@ -78,12 +82,18 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private static ConsumptionReportRow toRow(Document document, Map<Integer, String> planNames) {
-        Integer planId = document.getInteger("planId");
-        int watchedSeconds = document.getInteger("watchedSeconds", 0);
-        long distinctProfiles = document.getInteger("distinctProfiles", 0);
+        // $sum answers int32 or int64 depending on the total, so read every number as Number.
+        Integer planId = number(document, "planId").intValue();
+        long watchedSeconds = number(document, "watchedSeconds").longValue();
+        long distinctProfiles = number(document, "distinctProfiles").longValue();
         return new ConsumptionReportRow(planId, planNames.get(planId),
                 ContentType.valueOf(document.getString("contentType")), round1(watchedSeconds / 60.0),
                 distinctProfiles);
+    }
+
+    private static Number number(Document document, String field) {
+        Object value = document.get(field);
+        return value instanceof Number n ? n : 0;
     }
 
     private static Date toDate(LocalDate date) {

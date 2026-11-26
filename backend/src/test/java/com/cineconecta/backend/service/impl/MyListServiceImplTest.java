@@ -12,11 +12,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.cineconecta.backend.dto.mylist.MyListItemResponse;
 import com.cineconecta.backend.exception.ConflictException;
-import com.cineconecta.backend.exception.ResourceNotFoundException;
+import com.cineconecta.backend.exception.ForbiddenOperationException;
+import com.cineconecta.backend.model.relational.Profile;
 import com.cineconecta.backend.model.document.Content;
 import com.cineconecta.backend.model.document.MyListItem;
 import com.cineconecta.backend.model.enums.ContentStatus;
@@ -33,12 +35,25 @@ class MyListServiceImplTest {
     private final ContentRepository contents = mock(ContentRepository.class);
     private final MyListServiceImpl service = new MyListServiceImpl(myList, contents);
 
+    private final Profile profile = mock(Profile.class); // seed profile 2 "Ana": max rating 12
+
+    @BeforeEach
+    void anaRatedTwelve() {
+        when(profile.getProfileId()).thenReturn(PROFILE);
+        when(profile.getMaxAgeRating()).thenReturn(12);
+    }
+
     private static Content content(String id, ContentStatus status) {
+        return content(id, status, 12);
+    }
+
+    private static Content content(String id, ContentStatus status, int ageRating) {
         Content content = new Content();
         content.setId(id);
         content.setType(ContentType.MOVIE);
         content.setStatus(status);
         content.setTitle("Title " + id);
+        content.setAgeRating(ageRating);
         return content;
     }
 
@@ -54,24 +69,35 @@ class MyListServiceImplTest {
     void addingAnExistingContentIsAConflict() {
         when(myList.existsByProfileIdAndContentId(PROFILE, "MOV-00001")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.add(PROFILE, "MOV-00001")).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> service.add(profile, "MOV-00001")).isInstanceOf(ConflictException.class);
         verify(myList, never()).save(any());
     }
 
     @Test
-    void addingAMissingContentIsNotFound() {
-        when(myList.existsByProfileIdAndContentId(PROFILE, "MOV-99999")).thenReturn(false);
-        when(contents.findById("MOV-99999")).thenReturn(Optional.empty());
+    void missingDraftOrWithdrawnContentCannotBeAdded() {
+        // findByIdAndStatus(..., PUBLISHED) is empty for all three: MOV-00007 is a DRAFT in the seed
+        when(contents.findByIdAndStatus("MOV-00007", ContentStatus.PUBLISHED)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.add(PROFILE, "MOV-99999")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.add(profile, "MOV-00007")).isInstanceOf(ForbiddenOperationException.class);
+        verify(myList, never()).save(any());
+    }
+
+    @Test
+    void contentAboveTheProfileRatingCannotBeAdded() {
+        when(contents.findByIdAndStatus("MOV-00002", ContentStatus.PUBLISHED))
+                .thenReturn(Optional.of(content("MOV-00002", ContentStatus.PUBLISHED, 18)));
+
+        assertThatThrownBy(() -> service.add(profile, "MOV-00002")).isInstanceOf(ForbiddenOperationException.class);
+        verify(myList, never()).save(any());
     }
 
     @Test
     void addReturnsTheNewItem() {
         when(myList.existsByProfileIdAndContentId(PROFILE, "MOV-00001")).thenReturn(false);
-        when(contents.findById("MOV-00001")).thenReturn(Optional.of(content("MOV-00001", ContentStatus.PUBLISHED)));
+        when(contents.findByIdAndStatus("MOV-00001", ContentStatus.PUBLISHED))
+                .thenReturn(Optional.of(content("MOV-00001", ContentStatus.PUBLISHED)));
 
-        MyListItemResponse response = service.add(PROFILE, "MOV-00001");
+        MyListItemResponse response = service.add(profile, "MOV-00001");
 
         assertThat(response.contentId()).isEqualTo("MOV-00001");
         assertThat(response.available()).isTrue();

@@ -1,14 +1,11 @@
 package com.cineconecta.backend.service.impl;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import com.cineconecta.backend.dto.playback.PlaybackEventRequest;
@@ -30,16 +27,23 @@ import com.cineconecta.backend.service.PlaybackAuthorization;
 import com.cineconecta.backend.service.PlaybackEligibilityService;
 import com.cineconecta.backend.service.PlaybackService;
 
-import static org.springframework.data.mongodb.core.query.Criteria.where;
-
 /**
- * Every transition is a MongoTemplate conditional update (match on _id AND state), mirroring
- * database/mongodb/06_operations.js section 5: a second, concurrent request for the same
- * transition simply does not match anything, and the re-read afterwards returns whatever the
- * first one left — never a duplicated watchedSeconds.
+ * Every transition is ONE conditional pipeline update on Watch_sessions, exactly like
+ * database/mongodb/06_operations.js section 5:
+ *   - the filter matches _id AND the allowed source states, so a second concurrent request for
+ *     the same transition matches nothing (no duplicated watchedSeconds);
+ *   - the time played is computed by MongoDB from the document's CURRENT playingSince and
+ *     $$NOW at write time, never from a value read earlier in Java, so two different
+ *     transitions racing (pause vs seek vs heartbeat) cannot overwrite each other's increment.
+ * The session is re-read afterwards and returned as it really is.
  */
 @Service
 public class PlaybackServiceImpl implements PlaybackService {
+
+    private static final String COLLECTION = "Watch_sessions";
+    private static final String PLAYING = PlaybackState.PLAYING.name();
+    private static final String PAUSED = PlaybackState.PAUSED.name();
+    private static final String ENDED = PlaybackState.ENDED.name();
 
     private final WatchSessionRepository sessions;
     private final MongoTemplate mongoTemplate;
@@ -61,16 +65,17 @@ public class PlaybackServiceImpl implements PlaybackService {
         requireEpisodeMatchesType(content, request.episodeId());
         int durationSeconds = resolveDurationSeconds(content, request.episodeId());
 
-        // Close any session this profile left open for the same content (abandoned).
-        Instant now = Instant.now();
-        mongoTemplate.updateMulti(
-                Query.query(where("profileId").is(profile.getProfileId())
-                        .and("contentId").is(content.getId())
-                        .and("state").ne(PlaybackState.ENDED)),
-                new Update().set("state", PlaybackState.ENDED).set("endedAt", now)
-                        .set("lastActivityAt", now).unset("playingSince"),
-                WatchSession.class);
+        // Close any session this profile left open for the same content (tab closed, crash).
+        // It ends at its last saved activity: the heartbeat already stored the time played and
+        // the position, and nothing after that moment is counted (no inflated reports).
+        mongoTemplate.getCollection(COLLECTION).updateMany(
+                new Document("profileId", profile.getProfileId())
+                        .append("contentId", content.getId())
+                        .append("state", new Document("$ne", ENDED)),
+                List.of(new Document("$set", new Document("state", ENDED).append("endedAt", "$lastActivityAt")),
+                        new Document("$unset", "playingSince")));
 
+        Instant now = Instant.now();
         WatchSession session = new WatchSession();
         session.setProfileId(profile.getProfileId());
         session.setSubscriptionId(auth.subscriptionId());
@@ -89,24 +94,23 @@ public class PlaybackServiceImpl implements PlaybackService {
         return mapper.toState(sessions.save(session));
     }
 
+    // PLAYING -> PAUSED, adding what was played since playingSince.
     @Override
     public PlaybackStateResponse pause(Integer profileId, String sessionId) {
         WatchSession session = ownedSession(profileId, sessionId);
         if (session.getState() == PlaybackState.PLAYING) {
-            int elapsed = elapsedSince(session);
-            int watched = session.getWatchedSeconds() + elapsed;
-            int position = session.getLastPositionSeconds() + elapsed;
-            Instant now = Instant.now();
-            mongoTemplate.updateFirst(
-                    Query.query(where("_id").is(sessionId).and("state").is(PlaybackState.PLAYING)),
-                    new Update().set("watchedSeconds", watched).set("lastPositionSeconds", position)
-                            .set("completed", isCompleted(position, session.getDurationSeconds()))
-                            .set("state", PlaybackState.PAUSED).set("lastActivityAt", now).unset("playingSince"),
-                    WatchSession.class);
+            update(sessionId, List.of(PLAYING), List.of(
+                    new Document("$set", new Document("watchedSeconds", plus("$watchedSeconds", elapsed()))
+                            .append("lastPositionSeconds", plus("$lastPositionSeconds", elapsed()))
+                            .append("state", PAUSED)
+                            .append("lastActivityAt", "$$NOW")),
+                    completedStage(),
+                    new Document("$unset", "playingSince")));
         }
-        return mapper.toState(ownedSession(profileId, sessionId));
+        return reread(profileId, sessionId);
     }
 
+    // PAUSED -> PLAYING.
     @Override
     public PlaybackStateResponse resume(Integer profileId, String sessionId) {
         WatchSession session = ownedSession(profileId, sessionId);
@@ -114,79 +118,115 @@ public class PlaybackServiceImpl implements PlaybackService {
             throw new BusinessRuleException("La sesión ya finalizó");
         }
         if (session.getState() == PlaybackState.PAUSED) {
-            Instant now = Instant.now();
-            mongoTemplate.updateFirst(
-                    Query.query(where("_id").is(sessionId).and("state").is(PlaybackState.PAUSED)),
-                    new Update().set("state", PlaybackState.PLAYING).set("playingSince", now)
-                            .set("lastActivityAt", now),
-                    WatchSession.class);
+            update(sessionId, List.of(PAUSED), List.of(
+                    new Document("$set", new Document("state", PLAYING)
+                            .append("playingSince", "$$NOW")
+                            .append("lastActivityAt", "$$NOW"))));
         }
-        return mapper.toState(ownedSession(profileId, sessionId));
+        return reread(profileId, sessionId);
     }
 
+    // RF47, RF53: from PLAYING, the time up to the jump is added and the clock restarts at the
+    // new position; from PAUSED, only the position moves. The jump itself never counts.
     @Override
     public PlaybackStateResponse seek(Integer profileId, String sessionId, PlaybackEventRequest request) {
         WatchSession session = ownedSession(profileId, sessionId);
-        if (session.getState() != PlaybackState.PLAYING) {
-            throw new BusinessRuleException("Solo se puede avanzar mientras se está reproduciendo");
+        if (session.getState() == PlaybackState.ENDED) {
+            throw new BusinessRuleException("La sesión ya finalizó");
         }
-        int elapsed = elapsedSince(session);
-        int watched = session.getWatchedSeconds() + elapsed;
         int position = clampPosition(request.positionSeconds(), session.getDurationSeconds());
-        Instant now = Instant.now();
-        mongoTemplate.updateFirst(
-                Query.query(where("_id").is(sessionId).and("state").is(PlaybackState.PLAYING)),
-                new Update().set("watchedSeconds", watched).set("lastPositionSeconds", position)
-                        .set("completed", isCompleted(position, session.getDurationSeconds()))
-                        .set("playingSince", now).set("lastActivityAt", now),
-                WatchSession.class);
-        return mapper.toState(ownedSession(profileId, sessionId));
+        update(sessionId, List.of(PLAYING, PAUSED), List.of(
+                new Document("$set", new Document("watchedSeconds",
+                        plus("$watchedSeconds", whenPlaying(elapsed(), 0)))
+                        .append("lastPositionSeconds", position)
+                        .append("playingSince", whenPlaying("$$NOW", "$$REMOVE"))
+                        .append("lastActivityAt", "$$NOW")),
+                completedStage()));
+        return reread(profileId, sessionId);
     }
 
+    // Periodic save while PLAYING: same increment as pause, but the session keeps playing.
+    @Override
+    public PlaybackStateResponse heartbeat(Integer profileId, String sessionId) {
+        WatchSession session = ownedSession(profileId, sessionId);
+        if (session.getState() == PlaybackState.PLAYING) {
+            update(sessionId, List.of(PLAYING), List.of(
+                    new Document("$set", new Document("watchedSeconds", plus("$watchedSeconds", elapsed()))
+                            .append("lastPositionSeconds", plus("$lastPositionSeconds", elapsed()))
+                            .append("playingSince", "$$NOW")
+                            .append("lastActivityAt", "$$NOW")),
+                    completedStage()));
+        }
+        return reread(profileId, sessionId);
+    }
+
+    // RF48, RF56: PLAYING/PAUSED -> ENDED, completed. From PLAYING the last stretch is added.
     @Override
     public PlaybackStateResponse finish(Integer profileId, String sessionId) {
         WatchSession session = ownedSession(profileId, sessionId);
         if (session.getState() != PlaybackState.ENDED) {
-            finishAtomically(sessionId);
+            update(sessionId, List.of(PLAYING, PAUSED), List.of(
+                    new Document("$set", new Document("watchedSeconds",
+                            plus("$watchedSeconds", whenPlaying(elapsed(), 0)))
+                            .append("lastPositionSeconds", plus("$lastPositionSeconds", whenPlaying(elapsed(), 0)))
+                            .append("state", ENDED)
+                            .append("endedAt", "$$NOW")
+                            .append("lastActivityAt", "$$NOW")
+                            .append("completed", true)),
+                    new Document("$unset", "playingSince")));
         }
-        return mapper.toState(ownedSession(profileId, sessionId));
+        return reread(profileId, sessionId);
+    }
+
+    // ---- Pipeline pieces (same expressions as 06_operations.js) -----------------------------
+
+    private void update(String sessionId, List<String> fromStates, List<Document> pipeline) {
+        mongoTemplate.getCollection(COLLECTION).updateOne(
+                new Document("_id", new ObjectId(sessionId))
+                        .append("state", new Document("$in", fromStates)),
+                pipeline);
     }
 
     /**
-     * Pipeline update (not a plain $set): watchedSeconds is computed from the document's
-     * CURRENT state and playingSince at write time, atomically — exactly like
-     * database/mongodb/06_operations.js section 5 ("Finalizar"). This one needs it, unlike
-     * pause()/resume()/seek(): its filter accepts two source states (PLAYING or PAUSED), so a
-     * plain Java-precomputed $set could otherwise overwrite a watchedSeconds increment that a
-     * concurrent pause()/seek() already won the race to apply.
+     * Seconds played since playingSince, by the database clock, capped at what the content
+     * still had left (durationSeconds - lastPositionSeconds): a session forgotten in PLAYING
+     * never counts more than the rest of the content.
      */
-    private void finishAtomically(String sessionId) {
-        Document elapsedSinceNow = new Document("$max", List.of(0, new Document("$min", List.of(
+    private static Document elapsed() {
+        return new Document("$max", List.of(0, new Document("$min", List.of(
                 new Document("$dateDiff", new Document("startDate", "$playingSince")
                         .append("endDate", "$$NOW").append("unit", "second")),
                 new Document("$subtract", List.of("$durationSeconds", "$lastPositionSeconds"))))));
-        Document watchedSecondsExpr = new Document("$add", List.of("$watchedSeconds",
-                new Document("$cond", List.of(
-                        new Document("$eq", List.of("$state", PlaybackState.PLAYING.name())),
-                        elapsedSinceNow, 0))));
-        List<Document> pipeline = List.of(
-                new Document("$set", new Document("watchedSeconds", watchedSecondsExpr)
-                        .append("state", PlaybackState.ENDED.name())
-                        .append("endedAt", "$$NOW").append("lastActivityAt", "$$NOW")
-                        .append("completed", true)),
-                new Document("$unset", "playingSince"));
-        mongoTemplate.getCollection("Watch_sessions").updateOne(
-                new Document("_id", new ObjectId(sessionId))
-                        .append("state", new Document("$in",
-                                List.of(PlaybackState.PLAYING.name(), PlaybackState.PAUSED.name()))),
-                pipeline);
+    }
+
+    private static Document plus(String field, Object amount) {
+        return new Document("$add", List.of(field, amount));
+    }
+
+    private static Document whenPlaying(Object ifPlaying, Object otherwise) {
+        return new Document("$cond", List.of(new Document("$eq", List.of("$state", PLAYING)), ifPlaying, otherwise));
+    }
+
+    // RF56: once the position reaches 90 % of the duration the session stays completed,
+    // even if the user later seeks back. Runs after the $set that moved the position.
+    private static Document completedStage() {
+        return new Document("$set", new Document("completed", new Document("$or", List.of("$completed",
+                new Document("$gte", List.of("$lastPositionSeconds",
+                        new Document("$multiply", List.of(0.9, "$durationSeconds"))))))));
     }
 
     // ---- Rules -----------------------------------------------------------------------------
 
     private WatchSession ownedSession(Integer profileId, String sessionId) {
+        if (!ObjectId.isValid(sessionId)) {
+            throw new ForbiddenOperationException("La sesión no pertenece al perfil");
+        }
         return sessions.findByIdAndProfileId(sessionId, profileId)
                 .orElseThrow(() -> new ForbiddenOperationException("La sesión no pertenece al perfil"));
+    }
+
+    private PlaybackStateResponse reread(Integer profileId, String sessionId) {
+        return mapper.toState(ownedSession(profileId, sessionId));
     }
 
     // RF49: series play by episode; a movie/documentary never takes one.
@@ -215,20 +255,7 @@ public class PlaybackServiceImpl implements PlaybackService {
                 .orElseThrow(() -> new ResourceNotFoundException("El episodio no existe: " + episodeId));
     }
 
-    // Server clock, capped so a session left PLAYING for hours never counts more than the
-    // content still had left (durationSeconds - lastPositionSeconds).
-    private int elapsedSince(WatchSession session) {
-        long raw = Duration.between(session.getPlayingSince(), Instant.now()).getSeconds();
-        long cap = session.getDurationSeconds() - session.getLastPositionSeconds();
-        return (int) Math.max(0, Math.min(raw, cap));
-    }
-
-    private int clampPosition(int requested, int durationSeconds) {
+    private static int clampPosition(int requested, int durationSeconds) {
         return Math.max(0, Math.min(requested, durationSeconds));
-    }
-
-    // RF56: finished or at/above 90% of the duration.
-    private boolean isCompleted(int positionSeconds, int durationSeconds) {
-        return positionSeconds >= durationSeconds * 0.9;
     }
 }

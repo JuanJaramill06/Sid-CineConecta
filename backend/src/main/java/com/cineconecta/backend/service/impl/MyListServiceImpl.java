@@ -11,10 +11,11 @@ import org.springframework.stereotype.Service;
 
 import com.cineconecta.backend.dto.mylist.MyListItemResponse;
 import com.cineconecta.backend.exception.ConflictException;
-import com.cineconecta.backend.exception.ResourceNotFoundException;
+import com.cineconecta.backend.exception.ForbiddenOperationException;
 import com.cineconecta.backend.model.document.Content;
 import com.cineconecta.backend.model.document.MyListItem;
 import com.cineconecta.backend.model.enums.ContentStatus;
+import com.cineconecta.backend.model.relational.Profile;
 import com.cineconecta.backend.repository.mongo.ContentRepository;
 import com.cineconecta.backend.repository.mongo.MyListRepository;
 import com.cineconecta.backend.service.MyListService;
@@ -23,6 +24,7 @@ import com.cineconecta.backend.service.MyListService;
 public class MyListServiceImpl implements MyListService {
 
     private static final String DUPLICATE = "El contenido ya está en Mi lista";
+    private static final String NOT_AVAILABLE = "El contenido no existe o no está disponible";
 
     private final MyListRepository myList;
     private final ContentRepository contents;
@@ -47,12 +49,16 @@ public class MyListServiceImpl implements MyListService {
     }
 
     @Override
-    public MyListItemResponse add(Integer profileId, String contentId) {
+    public MyListItemResponse add(Profile profile, String contentId) {
+        Integer profileId = profile.getProfileId();
         if (myList.existsByProfileIdAndContentId(profileId, contentId)) {
             throw new ConflictException(DUPLICATE);
         }
-        Content content = contents.findById(contentId)
-                .orElseThrow(() -> new ResourceNotFoundException("El contenido no existe: " + contentId));
+        // Same rule as the catalog (RF34): only PUBLISHED content within the profile's rating.
+        // Missing, DRAFT, WITHDRAWN or not allowed answer alike, so a draft's id never leaks.
+        Content content = contents.findByIdAndStatus(contentId, ContentStatus.PUBLISHED)
+                .filter(c -> c.getAgeRating() <= profile.getMaxAgeRating())
+                .orElseThrow(() -> new ForbiddenOperationException(NOT_AVAILABLE));
         MyListItem item = new MyListItem();
         item.setProfileId(profileId);
         item.setContentId(contentId);

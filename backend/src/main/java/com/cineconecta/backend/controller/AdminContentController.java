@@ -1,7 +1,5 @@
 package com.cineconecta.backend.controller;
 
-import java.util.List;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -9,12 +7,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cineconecta.backend.dto.catalog.ContentDetailResponse;
 import com.cineconecta.backend.dto.catalog.ContentRequest;
 import com.cineconecta.backend.dto.catalog.ContentSummaryResponse;
+import com.cineconecta.backend.dto.common.PageResponse;
+import com.cineconecta.backend.model.enums.ContentStatus;
+import com.cineconecta.backend.model.enums.ContentType;
 import com.cineconecta.backend.service.ContentAdminService;
 
 import jakarta.validation.Valid;
@@ -30,9 +32,13 @@ public class AdminContentController {
         this.contentAdminService = contentAdminService;
     }
 
+    /** ?status=DRAFT|PUBLISHED|WITHDRAWN &type=MOVIE|SERIES|DOCUMENTARY &page=0 &size=20 (max 100). */
     @GetMapping
-    public List<ContentSummaryResponse> list() {
-        return contentAdminService.list();
+    public PageResponse<ContentSummaryResponse> list(@RequestParam(required = false) ContentStatus status,
+                                                     @RequestParam(required = false) ContentType type,
+                                                     @RequestParam(defaultValue = "0") int page,
+                                                     @RequestParam(defaultValue = "20") int size) {
+        return contentAdminService.list(status, type, page, size);
     }
 
     @GetMapping("/{contentId}")

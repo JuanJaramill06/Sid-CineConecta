@@ -87,6 +87,7 @@ Una película lleva `movie: { durationSeconds, directors, cast: [{ actor, charac
 | Un documento **por sesión**, nunca se sobrescribe | RF55: volver a ver un contenido crea otra sesión y la anterior se conserva |
 | Colección aparte (no embebida en el contenido ni en el perfil) | Crece sin límite (ver §5). Las dos consultas principales cruzan perfiles o contenidos |
 | `state` + `playingSince` | El servidor calcula el tiempo visto con `$$NOW - playingSince`, sin confiar en el cliente, con tope en lo que falta del contenido (`durationSeconds - lastPositionSeconds`): una sesión olvidada en `PLAYING` no infla el informe. Un salto (RF47) mueve `lastPositionSeconds` pero no suma tiempo (RF53) |
+| *Heartbeat* cada ~30 s mientras se reproduce | Guarda el tiempo visto y la posición sin cambiar el estado (`POST /api/playback/{id}/heartbeat`). Si el usuario cierra la pestaña se pierden como máximo esos segundos y "Continuar viendo" muestra la posición real. Una sesión abandonada se cierra en su último heartbeat (`endedAt = lastActivityAt`) cuando el perfil vuelve a abrir ese contenido, así que no suma tiempo que nadie vio |
 | `planId` y `subscriptionId` copiados al iniciar | RF68: el informe de consumo agrupa por el plan **con el que se vio**, aunque la cuenta cambie de plan después (cuenta 6 del seed) |
 | `contentType` copiado | El informe agrupa por tipo sin hacer `$lookup` a `Content`, y así puede quedar *covered* (ver `indices-y-optimizacion.md`) |
 
