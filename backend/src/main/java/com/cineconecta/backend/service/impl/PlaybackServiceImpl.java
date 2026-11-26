@@ -199,8 +199,10 @@ public class PlaybackServiceImpl implements PlaybackService {
                 new Document("$subtract", List.of("$durationSeconds", "$lastPositionSeconds"))))));
     }
 
+    // $dateDiff returns a long, so the sum would be stored as int64; $toInt keeps the fields
+    // int32 like every other session (the values are seconds, far below 2^31).
     private static Document plus(String field, Object amount) {
-        return new Document("$add", List.of(field, amount));
+        return new Document("$toInt", new Document("$add", List.of(field, amount)));
     }
 
     private static Document whenPlaying(Object ifPlaying, Object otherwise) {
