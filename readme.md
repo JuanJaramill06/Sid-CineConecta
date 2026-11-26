@@ -195,6 +195,34 @@ All of them take the account from the token; none accepts an `accountId` from th
 | `PUT /api/profiles/{id}` | Rename or change `maxAgeRating` |
 | `POST /api/profiles/{id}/deactivate` / `activate` | `isActive = 'N'` / `'Y'`; never deleted (RF11). Activating follows the same rules as creating |
 
+#### Catalog and admin content (MongoDB)
+
+Client routes need a current subscription (`ReferenceValidationService.requireActiveSubscription`, 422 if none) and the active profile in `X-Profile-Id`; admin routes are already restricted to `ROLE_ADMIN`.
+
+| Method and route | What it does |
+|---|---|
+| `GET /api/catalog` `?title&type&genre&language&year&page&size` | Search/filter/paginate (RF32-34). Only `PUBLISHED` content with `ageRating <= ` the profile's limit. `title` runs a `$text` search sorted by relevance; otherwise newest first |
+| `GET /api/catalog/{id}` | Full detail, with seasons/episodes for a series (RF35). Not published, withdrawn, or above the profile's rating: 403 (same answer as "does not exist", so it never reveals which one it is) |
+| `GET /api/admin/content` | Every content, any status |
+| `GET /api/admin/content/{id}` | Full detail, any status |
+| `POST /api/admin/content` | Create (RF24-31). The id (`MOV-00001`/`SER-00001`/`DOC-00001`) and each episode's id are generated server-side and never reused (RF63); starts as `DRAFT`. Exactly the subdocument matching `type` is accepted; repeated season/episode numbers: 422 |
+| `PUT /api/admin/content/{id}` | Update in place; `type` cannot change |
+| `POST /api/admin/content/{id}/publish` / `withdraw` | `status` -> `PUBLISHED` / `WITHDRAWN`; never deletes (RF60-62) |
+
+#### My list, playback and Continue watching (MongoDB)
+
+My list only needs an active profile (no subscription check); playback needs both, through `PlaybackEligibilityService`.
+
+| Method and route | What it does |
+|---|---|
+| `GET /api/my-list` | Every item of the profile; a withdrawn content stays with `available: false` (RF39) |
+| `POST /api/my-list` `{contentId}` | Adds it; 409 if it is already there (RF37) |
+| `DELETE /api/my-list/{contentId}` | Removes it; a no-op if it was not there |
+| `POST /api/playback/start` `{contentId, episodeId?}` | Authorizes (current subscription, published, `ageRating`), closes any session left open for the same profile+content, and starts a new one `PLAYING`. `episodeId` is required for a series and forbidden otherwise (422) |
+| `POST /api/playback/{sessionId}/pause` \| `resume` \| `finish` | Conditional on the session's current `state`; a second, concurrent call for the same transition is a no-op, never a duplicated `watchedSeconds` (RF46, RF48, RF56) |
+| `POST /api/playback/{sessionId}/seek` `{positionSeconds}` | Moves `lastPositionSeconds`; the jump itself never adds watched time (RF47, RF53) |
+| `GET /api/continue-watching` | Last non-completed session per content, newest activity first; a completed series moves to its next episode from 0 (RF57-61) |
+
 ### 4. Frontend
 
 ```bash
