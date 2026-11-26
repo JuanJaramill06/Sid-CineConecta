@@ -209,6 +209,20 @@ Client routes need a current subscription (`ReferenceValidationService.requireAc
 | `PUT /api/admin/content/{id}` | Update in place; `type` cannot change |
 | `POST /api/admin/content/{id}/publish` / `withdraw` | `status` -> `PUBLISHED` / `WITHDRAWN`; never deletes (RF60-62) |
 
+#### My list, playback and Continue watching (MongoDB)
+
+My list only needs an active profile (no subscription check); playback needs both, through `PlaybackEligibilityService`.
+
+| Method and route | What it does |
+|---|---|
+| `GET /api/my-list` | Every item of the profile; a withdrawn content stays with `available: false` (RF39) |
+| `POST /api/my-list` `{contentId}` | Adds it; 409 if it is already there (RF37) |
+| `DELETE /api/my-list/{contentId}` | Removes it; a no-op if it was not there |
+| `POST /api/playback/start` `{contentId, episodeId?}` | Authorizes (current subscription, published, `ageRating`), closes any session left open for the same profile+content, and starts a new one `PLAYING`. `episodeId` is required for a series and forbidden otherwise (422) |
+| `POST /api/playback/{sessionId}/pause` \| `resume` \| `finish` | Conditional on the session's current `state`; a second, concurrent call for the same transition is a no-op, never a duplicated `watchedSeconds` (RF46, RF48, RF56) |
+| `POST /api/playback/{sessionId}/seek` `{positionSeconds}` | Moves `lastPositionSeconds`; the jump itself never adds watched time (RF47, RF53) |
+| `GET /api/continue-watching` | Last non-completed session per content, newest activity first; a completed series moves to its next episode from 0 (RF57-61) |
+
 ### 4. Frontend
 
 ```bash
