@@ -144,3 +144,15 @@
   color: var(--text-h);
   font-weight: 600;
 }
+
+.profile-card {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+
+.profile-card:hover {
+  border-color: var(--accent-border);
+}
