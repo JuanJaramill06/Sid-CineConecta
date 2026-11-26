@@ -4,6 +4,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -145,17 +147,39 @@ public class PlaybackServiceImpl implements PlaybackService {
     public PlaybackStateResponse finish(Integer profileId, String sessionId) {
         WatchSession session = ownedSession(profileId, sessionId);
         if (session.getState() != PlaybackState.ENDED) {
-            int elapsed = session.getState() == PlaybackState.PLAYING ? elapsedSince(session) : 0;
-            int watched = session.getWatchedSeconds() + elapsed;
-            Instant now = Instant.now();
-            mongoTemplate.updateFirst(
-                    Query.query(where("_id").is(sessionId).and("state").in(PlaybackState.PLAYING, PlaybackState.PAUSED)),
-                    new Update().set("watchedSeconds", watched).set("state", PlaybackState.ENDED)
-                            .set("completed", true).set("endedAt", now).set("lastActivityAt", now)
-                            .unset("playingSince"),
-                    WatchSession.class);
+            finishAtomically(sessionId);
         }
         return mapper.toState(ownedSession(profileId, sessionId));
+    }
+
+    /**
+     * Pipeline update (not a plain $set): watchedSeconds is computed from the document's
+     * CURRENT state and playingSince at write time, atomically — exactly like
+     * database/mongodb/06_operations.js section 5 ("Finalizar"). This one needs it, unlike
+     * pause()/resume()/seek(): its filter accepts two source states (PLAYING or PAUSED), so a
+     * plain Java-precomputed $set could otherwise overwrite a watchedSeconds increment that a
+     * concurrent pause()/seek() already won the race to apply.
+     */
+    private void finishAtomically(String sessionId) {
+        Document elapsedSinceNow = new Document("$max", List.of(0, new Document("$min", List.of(
+                new Document("$dateDiff", new Document("startDate", "$playingSince")
+                        .append("endDate", "$$NOW").append("unit", "second")),
+                new Document("$subtract", List.of("$durationSeconds", "$lastPositionSeconds"))))));
+        Document watchedSecondsExpr = new Document("$add", List.of("$watchedSeconds",
+                new Document("$cond", List.of(
+                        new Document("$eq", List.of("$state", PlaybackState.PLAYING.name())),
+                        elapsedSinceNow, 0))));
+        List<Document> pipeline = List.of(
+                new Document("$set", new Document("watchedSeconds", watchedSecondsExpr)
+                        .append("state", PlaybackState.ENDED.name())
+                        .append("endedAt", "$$NOW").append("lastActivityAt", "$$NOW")
+                        .append("completed", true)),
+                new Document("$unset", "playingSince"));
+        mongoTemplate.getCollection("Watch_sessions").updateOne(
+                new Document("_id", new ObjectId(sessionId))
+                        .append("state", new Document("$in",
+                                List.of(PlaybackState.PLAYING.name(), PlaybackState.PAUSED.name()))),
+                pipeline);
     }
 
     // ---- Rules -----------------------------------------------------------------------------
