@@ -54,6 +54,12 @@ public class PlaybackController {
         return playbackService.seek(profile.getProfileId(), sessionId, request);
     }
 
+    /** Call every ~30 s while playing: saves time watched and position (Continue watching). */
+    @PostMapping("/{sessionId}/heartbeat")
+    public PlaybackStateResponse heartbeat(@CurrentProfile Profile profile, @PathVariable String sessionId) {
+        return playbackService.heartbeat(profile.getProfileId(), sessionId);
+    }
+
     @PostMapping("/{sessionId}/finish")
     public PlaybackStateResponse finish(@CurrentProfile Profile profile, @PathVariable String sessionId) {
         return playbackService.finish(profile.getProfileId(), sessionId);
