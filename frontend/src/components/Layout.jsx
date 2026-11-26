@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Layout() {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, isClient, logout } = useAuth()
 
   return (
     <div className="app-shell">
@@ -11,6 +11,8 @@ export default function Layout() {
           CineConecta
         </NavLink>
         <nav>
+          <NavLink to="/plans">Planes</NavLink>
+          {isClient && <NavLink to="/subscription">Mi suscripción</NavLink>}
           {isAuthenticated ? (
             <button type="button" className="link-button" onClick={logout}>
               Cerrar sesión
