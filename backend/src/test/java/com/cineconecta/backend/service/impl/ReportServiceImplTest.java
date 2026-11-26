@@ -13,6 +13,7 @@ import java.util.List;
 
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -77,5 +78,36 @@ class ReportServiceImplTest {
         service.consumptionByPlanAndType(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
 
         verify(mongoTemplate).aggregate(any(Aggregation.class), eq("Watch_sessions"), eq(Document.class));
+    }
+
+    @Test
+    void largeTotalsArriveAsLongAndAreStillRead() {
+        // $sum switches to int64 above 2^31: 3,000,000,000 s would break getInteger()
+        Document row = new Document("planId", 3).append("contentType", "SERIES")
+                .append("watchedSeconds", 3_000_000_000L).append("distinctProfiles", 25_000);
+        when(mongoTemplate.aggregate(any(Aggregation.class), eq("Watch_sessions"), eq(Document.class)))
+                .thenReturn(new AggregationResults<>(List.of(row), new Document()));
+        when(plans.findAll()).thenReturn(List.of());
+
+        ConsumptionReportRow r = service.consumptionByPlanAndType(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31)).get(0);
+
+        assertThat(r.minutesWatched()).isEqualTo(50_000_000.0);
+        assertThat(r.distinctProfiles()).isEqualTo(25_000);
+    }
+
+    @Test
+    void consumptionProjectsOnlyTheIndexedFieldsSoTheQueryIsCovered() {
+        when(mongoTemplate.aggregate(any(Aggregation.class), eq("Watch_sessions"), eq(Document.class)))
+                .thenReturn(new AggregationResults<>(List.of(), new Document()));
+        when(plans.findAll()).thenReturn(List.of());
+
+        service.consumptionByPlanAndType(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+
+        ArgumentCaptor<Aggregation> aggregation = ArgumentCaptor.forClass(Aggregation.class);
+        verify(mongoTemplate).aggregate(aggregation.capture(), eq("Watch_sessions"), eq(Document.class));
+        List<Document> stages = aggregation.getValue().toPipeline(Aggregation.DEFAULT_CONTEXT);
+        assertThat(stages.get(0)).containsKey("$match");
+        assertThat(stages.get(1).get("$project", Document.class))
+                .containsOnlyKeys("_id", "planId", "contentType", "profileId", "watchedSeconds");
     }
 }
