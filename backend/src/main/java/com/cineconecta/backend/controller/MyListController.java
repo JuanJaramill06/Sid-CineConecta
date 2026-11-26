@@ -39,7 +39,7 @@ public class MyListController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public MyListItemResponse add(@CurrentProfile Profile profile, @Valid @RequestBody MyListAddRequest request) {
-        return myListService.add(profile.getProfileId(), request.contentId());
+        return myListService.add(profile, request.contentId());
     }
 
     @DeleteMapping("/{contentId}")
