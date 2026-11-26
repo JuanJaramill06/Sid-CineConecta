@@ -195,4 +195,23 @@ class PlaybackServiceImplTest {
         assertThat(response.state()).isEqualTo(PlaybackState.ENDED);
         verify(mongoTemplate, never()).updateFirst(any(), any(), eq(WatchSession.class));
     }
+
+    @Test
+    void finishWhilePlayingUsesAnAtomicPipelineUpdate() {
+        // A real ObjectId hex string: finishAtomically() parses the session id to query the
+        // native driver collection directly (not through Spring's Query/Criteria conversion).
+        String sessionId = "507f1f77bcf86cd799439011";
+        WatchSession playing = session(PlaybackState.PLAYING, 0, 0, 3600, Instant.now().minusSeconds(10));
+        WatchSession afterUpdate = session(PlaybackState.ENDED, 10, 0, 3600, null);
+        when(sessions.findByIdAndProfileId(sessionId, PROFILE)).thenReturn(Optional.of(playing),
+                Optional.of(afterUpdate));
+        com.mongodb.client.MongoCollection<org.bson.Document> collection = mock(
+                com.mongodb.client.MongoCollection.class);
+        when(mongoTemplate.getCollection("Watch_sessions")).thenReturn(collection);
+
+        PlaybackStateResponse response = service.finish(PROFILE, sessionId);
+
+        assertThat(response.state()).isEqualTo(PlaybackState.ENDED);
+        verify(collection).updateOne(any(org.bson.conversions.Bson.class), org.mockito.ArgumentMatchers.anyList());
+    }
 }
