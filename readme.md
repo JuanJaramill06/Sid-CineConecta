@@ -257,6 +257,35 @@ Without environment variables the context test is skipped, so `mvn test` passes 
 cd backend; .\mvnw.cmd test -Dtest=MongoMappingIT
 ```
 
+`MongoOperationsIT` runs the MongoDB side of the services against a real database loaded with `01_collections.js`, `02_indexes.js` and `03_seed.js` (Oracle is mocked):
+
+- the playback pipelines pass the validators;
+- time is computed with `$$NOW` and seeks never count;
+- two simultaneous pauses add the time once;
+- abandoned sessions close at their last heartbeat;
+- My list rejects drafts;
+- the admin list is paginated;
+- Continue watching gives the seed's expected results;
+- the consumption report uses its covered index.
+
+It only writes sessions and My list items of profile 999 and removes them. To run it without touching Atlas, use a throwaway local container (Docker):
+
+```powershell
+docker run -d --name cineconecta-mongo-test -p 127.0.0.1:27099:27017 -v "${PWD}\database\mongodb:/scripts:ro" mongo:8
+```
+
+```powershell
+foreach ($f in '01_collections.js','02_indexes.js','03_seed.js') { docker exec cineconecta-mongo-test mongosh --quiet --file /scripts/$f }
+```
+
+```powershell
+$env:MONGO_URI = 'mongodb://localhost:27099'; cd backend; .\mvnw.cmd test -Dtest='MongoOperationsIT,MongoMappingIT'
+```
+
+```powershell
+docker rm -f cineconecta-mongo-test
+```
+
 Database-level evidence:
 
 - **Transaction failure (RF19):** `05_verification.sql` calls the procedure with a duplicate payment reference. The payment insert fails and the subscription is rolled back too.
