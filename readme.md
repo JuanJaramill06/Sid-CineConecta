@@ -203,10 +203,10 @@ Client routes need a current subscription (`ReferenceValidationService.requireAc
 |---|---|
 | `GET /api/catalog` `?title&type&genre&language&year&page&size` | Search/filter/paginate (RF32-34). Only `PUBLISHED` content with `ageRating <= ` the profile's limit. `title` runs a `$text` search sorted by relevance; otherwise newest first |
 | `GET /api/catalog/{id}` | Full detail, with seasons/episodes for a series (RF35). Not published, withdrawn, or above the profile's rating: 403 (same answer as "does not exist", so it never reveals which one it is) |
-| `GET /api/admin/content` | Every content, any status |
+| `GET /api/admin/content?status&type&page&size` | Any status, optionally filtered by `status` and `type`; paginated (`size` default 20, max 100), ordered by id. Returns only the summary fields, never the seasons and episodes |
 | `GET /api/admin/content/{id}` | Full detail, any status |
 | `POST /api/admin/content` | Create (RF24-31). The id (`MOV-00001`/`SER-00001`/`DOC-00001`) and each episode's id are generated server-side and never reused (RF63); starts as `DRAFT`. Exactly the subdocument matching `type` is accepted; repeated season/episode numbers: 422 |
-| `PUT /api/admin/content/{id}` | Update in place; `type` cannot change |
+| `PUT /api/admin/content/{id}` | Update in place; `type` cannot change. Once a series has been published (`PUBLISHED` or `WITHDRAWN`) its existing episodes cannot be removed or renumbered (422): their ids derive from season + number and must never be handed to another episode (RF29, RF63). New episodes can be added; a `DRAFT` can be restructured freely |
 | `POST /api/admin/content/{id}/publish` / `withdraw` | `status` -> `PUBLISHED` / `WITHDRAWN`; never deletes (RF60-62) |
 
 #### My list, playback and Continue watching (MongoDB)
@@ -216,11 +216,12 @@ My list only needs an active profile (no subscription check); playback needs bot
 | Method and route | What it does |
 |---|---|
 | `GET /api/my-list` | Every item of the profile; a withdrawn content stays with `available: false` (RF39) |
-| `POST /api/my-list` `{contentId}` | Adds it; 409 if it is already there (RF37) |
+| `POST /api/my-list` `{contentId}` | Adds it; 409 if it is already there (RF37). Only `PUBLISHED` content within the profile's `maxAgeRating`: anything else answers 403, like the catalog, so a draft never leaks |
 | `DELETE /api/my-list/{contentId}` | Removes it; a no-op if it was not there |
 | `POST /api/playback/start` `{contentId, episodeId?}` | Authorizes (current subscription, published, `ageRating`), closes any session left open for the same profile+content, and starts a new one `PLAYING`. `episodeId` is required for a series and forbidden otherwise (422) |
-| `POST /api/playback/{sessionId}/pause` \| `resume` \| `finish` | Conditional on the session's current `state`; a second, concurrent call for the same transition is a no-op, never a duplicated `watchedSeconds` (RF46, RF48, RF56) |
-| `POST /api/playback/{sessionId}/seek` `{positionSeconds}` | Moves `lastPositionSeconds`; the jump itself never adds watched time (RF47, RF53) |
+| `POST /api/playback/{sessionId}/pause` \| `resume` \| `finish` | One conditional pipeline update on the session's `state`, with the time computed by MongoDB (`$$NOW - playingSince`): a second, concurrent call is a no-op and two different transitions never overwrite each other's increment (RF46, RF48, RF56) |
+| `POST /api/playback/{sessionId}/seek` `{positionSeconds}` | While `PLAYING` or `PAUSED`: moves `lastPositionSeconds` (clamped to the duration). The time played before the jump is added; the jump itself never counts (RF47, RF53). `ENDED`: 422 |
+| `POST /api/playback/{sessionId}/heartbeat` | **Call it every ~30 s while playing.** Saves the time watched and the position without changing the state, so closing the tab loses at most that much and Continue watching keeps the right position. A session left open is closed at its last heartbeat when the profile starts the same content again |
 | `GET /api/continue-watching` | Last non-completed session per content, newest activity first; a completed series moves to its next episode from 0 (RF57-61) |
 
 #### Reports (Oracle + MongoDB)
