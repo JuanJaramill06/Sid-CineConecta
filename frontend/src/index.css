@@ -1,53 +1,89 @@
+/*
+ * CineConecta design tokens. See PRODUCT.md: auteur cinema, curated, calm, cinematic.
+ * Neutral near-black stage (chroma 0) so the posters carry the color; one honey-amber
+ * accent (seed hue 75) for primary actions, current selection and state, never decoration.
+ */
+@import '@fontsource-variable/newsreader';
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  color-scheme: dark;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Surfaces: stage -> panel -> raised -> line */
+  --bg: oklch(0.18 0 0);
+  --surface: oklch(0.22 0 0);
+  --raised: oklch(0.265 0 0);
+  --line: oklch(0.34 0 0);
+  --line-strong: oklch(0.5 0 0); /* >= 3:1 on --bg (form borders) */
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
+  /* Ink */
+  --ink: oklch(0.96 0 0);
+  --ink-2: oklch(0.82 0 0);
+  --ink-3: oklch(0.7 0 0); /* 5.7:1 even on --raised */
+
+  /* Brand: late-afternoon honey */
+  --amber: oklch(0.817 0.161 75.1);
+  --amber-strong: oklch(0.86 0.15 78);
+  --amber-ink: oklch(0.21 0.04 70); /* text on amber */
+  --amber-soft: oklch(0.817 0.161 75.1 / 0.14);
+  --amber-line: oklch(0.817 0.161 75.1 / 0.45);
+
+  /* Data: magnitude bars (validated for the dark band, 3:1+ on --surface) */
+  --data-1: oklch(0.66 0.14 70);
+
+  /* Semantic states */
+  --danger: oklch(0.72 0.16 28);
+  --danger-soft: oklch(0.72 0.16 28 / 0.14);
+  --success: oklch(0.79 0.13 155);
+  --success-soft: oklch(0.79 0.13 155 / 0.14);
+  --info: oklch(0.8 0.08 240);
+  --info-soft: oklch(0.8 0.08 240 / 0.12);
+
+  /* Type */
+  --font-ui: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Newsreader Variable', 'Iowan Old Style', Georgia, serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: 3rem;
+
+  /* Space (4 px grid) */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4.5rem;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+
+  /* Layers */
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-toast: 40;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* ease-out-quint */
+  --dur: 180ms;
+
+  font: var(--text-md) / 1.55 var(--font-ui);
+  color: var(--ink-2);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -55,57 +91,77 @@ body {
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+h2,
+h3,
+h4 {
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
+  line-height: 1.2;
+  text-wrap: balance;
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: var(--text-xl);
+  font-weight: 600;
 }
+
+h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
 p {
-  margin: 0;
+  margin: 0 0 var(--s-3);
+  text-wrap: pretty;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: var(--amber);
+  text-underline-offset: 3px;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+a:hover {
+  color: var(--amber-strong);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--amber-soft);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

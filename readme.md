@@ -245,6 +245,30 @@ The application runs at `http://localhost:5173`.
 
 > The backend must be running before using the frontend: the frontend only displays data and sends requests to the API, which is the one that talks to both databases.
 
+#### Working on the frontend without the databases (mock API, dev only)
+
+`frontend/mock/mock-api.mjs` imitates the API in memory with the real MongoDB seed (`03_seed.js`) and a copy of the Oracle seed. Use it to build or review screens when Oracle/Atlas are not at hand. **It is not the backend:** it skips many edge cases, and nothing in it counts as evidence for the sustentación. Run it in one terminal and the frontend in another:
+
+```powershell
+cd frontend; npm run mock
+```
+
+```powershell
+cd frontend; npm run dev
+```
+
+It listens on port 8080, so stop the real backend first. To run both, change the mock's port and point the frontend to it:
+
+```powershell
+cd frontend; $env:MOCK_PORT = '8081'; npm run mock
+```
+
+```powershell
+cd frontend; $env:VITE_API_BASE_URL = 'http://localhost:8081'; npm run dev
+```
+
+Logins are the same as in the seeds (accounts 1–10 and the two admins; the passwords are in the seed comments). Data resets every time the mock restarts.
+
 ## Tests
 
 ```powershell
