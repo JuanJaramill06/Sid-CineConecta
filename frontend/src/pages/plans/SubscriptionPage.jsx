@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { ApiError } from '../../api/client.js'
 import { useApiClient } from '../../api/useApiClient.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -38,14 +38,28 @@ export default function SubscriptionPage() {
 
   return (
     <section>
-      <h1>Mi suscripción</h1>
+      <div className="page-head">
+        <div>
+          <h1>Tu cuenta</h1>
+          <p>Suscripciones y pagos de la cuenta. El historial nunca se borra: cada contratación crea una nueva.</p>
+        </div>
+        <div className="title-actions" style={{ margin: 0 }}>
+          <Link to="/profiles" className="button secondary">
+            Administrar perfiles
+          </Link>
+          <Link to="/plans" className="button">
+            Ver planes
+          </Link>
+        </div>
+      </div>
 
       <h2>Historial de suscripciones</h2>
       {subscriptions.length === 0 ? (
         <p>
-          Todavía no has contratado ningún plan. <a href="/plans">Ver planes</a>.
+          Todavía no has contratado ningún plan. <Link to="/plans">Ver planes</Link>.
         </p>
       ) : (
+        <div className="table-wrap" style={{ marginBottom: 'var(--s-6)' }}>
         <table className="table">
           <thead>
             <tr>
@@ -61,17 +75,23 @@ export default function SubscriptionPage() {
                 <td>{subscription.planName}</td>
                 <td>{subscription.startsAt.slice(0, 10)}</td>
                 <td>{subscription.endsAt.slice(0, 10)}</td>
-                <td>{subscription.active ? 'Vigente' : 'Vencida'}</td>
+                <td>
+                  <span className={`badge ${subscription.active ? 'published' : 'draft'}`}>
+                    {subscription.active ? 'Vigente' : 'Vencida'}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <h2>Pagos</h2>
       {payments.length === 0 ? (
         <p>No hay pagos registrados.</p>
       ) : (
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -87,11 +107,12 @@ export default function SubscriptionPage() {
                 <td>{payment.planName}</td>
                 <td>{payment.paidAt.slice(0, 10)}</td>
                 <td>{currency.format(payment.amount)}</td>
-                <td>{payment.reference}</td>
+                <td className="mono">{payment.reference}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   )

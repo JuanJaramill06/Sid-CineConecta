@@ -41,12 +41,23 @@ async function parseBody(response) {
   }
 }
 
-async function request(path, { method = 'GET', body, token, profileId, query } = {}) {
-  const response = await fetch(buildUrl(path, query), {
-    method,
-    headers: buildHeaders(token, profileId, body !== undefined),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+// keepalive: the request survives the page being closed (the player's last "pause").
+async function request(path, { method = 'GET', body, token, profileId, query, keepalive = false } = {}) {
+  let response
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method,
+      headers: buildHeaders(token, profileId, body !== undefined),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      keepalive,
+    })
+  } catch {
+    // The API itself is unreachable (backend stopped, wrong URL): same shape as a 503.
+    throw new ApiError(0, {
+      code: 'NETWORK',
+      message: 'No se pudo contactar el servidor de CineConecta. Revisa que el backend esté en marcha.',
+    })
+  }
   const data = await parseBody(response)
   if (!response.ok) {
     throw new ApiError(response.status, data)

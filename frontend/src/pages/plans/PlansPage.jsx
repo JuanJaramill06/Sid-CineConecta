@@ -60,7 +60,7 @@ export default function PlansPage() {
           <article key={plan.planId} className="card">
             <h2>{plan.name}</h2>
             <p>{currency.format(plan.price)} / mes</p>
-            <p>Hasta {plan.maxProfiles} perfiles</p>
+            <p>Hasta {plan.maxProfiles} {plan.maxProfiles === 1 ? 'perfil' : 'perfiles'}</p>
 
             {!isClient && (
               <button type="button" className="button secondary" onClick={() => navigate('/login')}>
