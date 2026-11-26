@@ -3,6 +3,7 @@ package com.cineconecta.backend.controller;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -18,7 +19,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.cineconecta.backend.config.CorsConfig;
 import com.cineconecta.backend.config.SecurityConfig;
 import com.cineconecta.backend.config.WebConfig;
+import com.cineconecta.backend.dto.common.PageResponse;
 import com.cineconecta.backend.exception.GlobalExceptionHandler;
+import com.cineconecta.backend.model.enums.ContentStatus;
 import com.cineconecta.backend.security.AuthenticatedUser;
 import com.cineconecta.backend.security.Role;
 import com.cineconecta.backend.service.CatalogService;
@@ -82,9 +85,12 @@ class CatalogAdminWebTest {
 
     @Test
     void adminCanListContent() throws Exception {
-        when(contentAdminService.list()).thenReturn(List.of());
+        when(contentAdminService.list(ContentStatus.DRAFT, null, 0, 20))
+                .thenReturn(new PageResponse<>(List.of(), 0, 20, 0));
 
-        mvc.perform(get("/api/admin/content").header(HttpHeaders.AUTHORIZATION, adminToken()))
-           .andExpect(status().isOk());
+        mvc.perform(get("/api/admin/content").param("status", "DRAFT")
+                   .header(HttpHeaders.AUTHORIZATION, adminToken()))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.totalItems").value(0));
     }
 }

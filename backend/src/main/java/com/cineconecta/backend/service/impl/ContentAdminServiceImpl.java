@@ -4,6 +4,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.cineconecta.backend.dto.catalog.CastMemberRequest;
@@ -15,6 +19,7 @@ import com.cineconecta.backend.dto.catalog.EpisodeRequest;
 import com.cineconecta.backend.dto.catalog.MovieRequest;
 import com.cineconecta.backend.dto.catalog.SeasonRequest;
 import com.cineconecta.backend.dto.catalog.SeriesRequest;
+import com.cineconecta.backend.dto.common.PageResponse;
 import com.cineconecta.backend.exception.BusinessRuleException;
 import com.cineconecta.backend.exception.ResourceNotFoundException;
 import com.cineconecta.backend.mapper.ContentMapper;
@@ -26,12 +31,15 @@ import com.cineconecta.backend.model.document.MovieDetails;
 import com.cineconecta.backend.model.document.Season;
 import com.cineconecta.backend.model.document.SeriesDetails;
 import com.cineconecta.backend.model.enums.ContentStatus;
+import com.cineconecta.backend.model.enums.ContentType;
 import com.cineconecta.backend.repository.mongo.ContentIdGenerator;
 import com.cineconecta.backend.repository.mongo.ContentRepository;
 import com.cineconecta.backend.service.ContentAdminService;
 
 @Service
 public class ContentAdminServiceImpl implements ContentAdminService {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final ContentRepository contents;
     private final ContentIdGenerator idGenerator;
@@ -69,10 +77,40 @@ public class ContentAdminServiceImpl implements ContentAdminService {
         requireMatchingSubdocument(request);
         if (request.series() != null) {
             requireUniqueSeasonsAndEpisodes(request.series());
+            requireKeepsPublishedEpisodes(existing, request.series());
         }
         applyCommonFields(existing, request);
         applySubdocuments(existing, contentId, request);
         return mapper.toDetail(contents.save(existing));
+    }
+
+    /**
+     * RF29, RF63: an episode id is derived from (series, season, number), so removing or
+     * renumbering an episode and adding another in its place would hand the old id to a new
+     * episode, and the sessions, My list and reports that point to it would change meaning.
+     * Once a series has been published (PUBLISHED or WITHDRAWN) every existing episode must
+     * stay with its season and number; new episodes can still be added. A DRAFT was never
+     * visible to clients, so nothing can reference its episodes yet and it can be edited freely.
+     */
+    private void requireKeepsPublishedEpisodes(Content existing, SeriesRequest request) {
+        if (existing.getStatus() == ContentStatus.DRAFT || existing.getSeries() == null) {
+            return;
+        }
+        Set<String> requested = new HashSet<>();
+        for (SeasonRequest season : request.seasons()) {
+            for (EpisodeRequest episode : season.episodes()) {
+                requested.add(idGenerator.episodeId(existing.getId(), season.seasonNumber(), episode.number()));
+            }
+        }
+        List<String> missing = existing.getSeries().getSeasons().stream()
+                .flatMap(season -> season.getEpisodes().stream())
+                .map(Episode::getId)
+                .filter(id -> !requested.contains(id))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new BusinessRuleException("Una serie ya publicada no puede eliminar ni renumerar episodios"
+                    + " (sus ids no se reutilizan). Faltan: " + String.join(", ", missing));
+        }
     }
 
     @Override
@@ -81,8 +119,21 @@ public class ContentAdminServiceImpl implements ContentAdminService {
     }
 
     @Override
-    public List<ContentSummaryResponse> list() {
-        return mapper.toSummaries(contents.findAll());
+    public PageResponse<ContentSummaryResponse> list(ContentStatus status, ContentType type, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
+                Sort.by("_id"));
+        Page<Content> result;
+        if (status != null && type != null) {
+            result = contents.findSummariesByStatusAndType(status.name(), type.name(), pageable);
+        } else if (status != null) {
+            result = contents.findSummariesByStatus(status.name(), pageable);
+        } else if (type != null) {
+            result = contents.findSummariesByType(type.name(), pageable);
+        } else {
+            result = contents.findSummaries(pageable);
+        }
+        return new PageResponse<>(mapper.toSummaries(result.getContent()), pageable.getPageNumber(),
+                pageable.getPageSize(), result.getTotalElements());
     }
 
     @Override
