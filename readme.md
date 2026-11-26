@@ -223,6 +223,15 @@ My list only needs an active profile (no subscription check); playback needs bot
 | `POST /api/playback/{sessionId}/seek` `{positionSeconds}` | Moves `lastPositionSeconds`; the jump itself never adds watched time (RF47, RF53) |
 | `GET /api/continue-watching` | Last non-completed session per content, newest activity first; a completed series moves to its next episode from 0 (RF57-61) |
 
+#### Reports (Oracle + MongoDB)
+
+Both take `from`/`to` as inclusive calendar dates (`?from=2026-01-01&to=2026-01-31`) and an optional `&format=csv` (JSON otherwise). Already restricted to `ROLE_ADMIN`.
+
+| Method and route | What it does |
+|---|---|
+| `GET /api/admin/reports/income` | Total collected and subscriptions acquired per plan, from `payments` (RF66) |
+| `GET /api/admin/reports/consumption` | Minutes watched and distinct profiles per plan and content type, from `Watch_sessions` — each session counts under the plan vigente when it started (RF68) and a series by its episodes (RF69); plan names are added from Oracle |
+
 ### 4. Frontend
 
 ```bash
